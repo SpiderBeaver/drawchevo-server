@@ -1,9 +1,26 @@
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import { GameRoomDto } from './dto/GameRoomDto';
+import { PlayerDto } from './dto/PlayerDto';
+
+interface Player {
+  id: number;
+  socketId: string;
+}
 
 interface GameRoom {
   id: string;
-  players: string[];
+  players: Player[];
+}
+
+function gameRoomToDto(room: GameRoom): GameRoomDto {
+  const dto: GameRoomDto = {
+    id: room.id,
+    players: room.players.map((player) => ({
+      id: player.id,
+    })),
+  };
+  return dto;
 }
 
 const rooms: GameRoom[] = [];
@@ -28,11 +45,12 @@ io.on('connection', (socket) => {
 
     const room: GameRoom = {
       id: roomId,
-      players: [socket.id],
+      players: [{ id: 0, socketId: socket.id }],
     };
     rooms.push(room);
 
-    socket.emit('UPDATE_ROOM_STATE', { room: room });
+    const roomDto = gameRoomToDto(room);
+    socket.emit('UPDATE_ROOM_STATE', { room: roomDto });
   });
 
   socket.on('JOIN_ROOM', ({ roomId }: { roomId: string }) => {
@@ -40,9 +58,14 @@ io.on('connection', (socket) => {
     if (room) {
       socket.join(`gameroom:${roomId}`);
 
-      room.players.push(socket.id);
-      socket.emit('UPDATE_ROOM_STATE', { room: room });
-      socket.to(`gameroom:${roomId}`).emit('PLAYER_JOINED', { playerId: socket.id });
+      // Maybe should incapsulate this logic. But it works for now.
+      const newPlayerId = Math.max(...room.players.map((p) => p.id)) + 1;
+      room.players.push({ id: newPlayerId, socketId: socket.id });
+
+      const roomDto = gameRoomToDto(room);
+      socket.emit('UPDATE_ROOM_STATE', { room: roomDto });
+      const playerDto: PlayerDto = { id: newPlayerId };
+      socket.to(`gameroom:${roomId}`).emit('PLAYER_JOINED', { player: playerDto });
     }
   });
 });
@@ -51,3 +74,6 @@ const port = 3001;
 httpServer.listen(port, () => {
   console.log(`Server started on port ${port}`);
 });
+function PlayerDto(arg0: (player: Player) => void, as: any, PlayerDto: any): import('./dto/PlayerDto').PlayerDto[] {
+  throw new Error('Function not implemented.');
+}
