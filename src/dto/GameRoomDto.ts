@@ -6,4 +6,5 @@ export interface GameRoomDto {
   hostId: number;
   state: GameState;
   players: PlayerDto[];
+  originalPhrase: string | undefined;
 }

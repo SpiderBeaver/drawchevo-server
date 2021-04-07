@@ -1,5 +1,7 @@
+import { Socket } from 'socket.io';
+
 export interface Player {
   id: number;
-  socketId: string;
+  socket: Socket;
   username: string;
 }
