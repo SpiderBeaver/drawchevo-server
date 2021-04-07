@@ -10,12 +10,14 @@ interface Player {
 
 interface GameRoom {
   id: string;
+  hostId: number;
   players: Player[];
 }
 
 function gameRoomToDto(room: GameRoom): GameRoomDto {
   const dto: GameRoomDto = {
     id: room.id,
+    hostId: room.hostId,
     players: room.players.map((player) => ({
       id: player.id,
     })),
@@ -43,13 +45,16 @@ io.on('connection', (socket) => {
     const roomId = Math.random().toString(36).substr(2, 9);
     socket.join(`gameroom:${roomId}`);
 
+    const playerId = 0;
     const room: GameRoom = {
       id: roomId,
-      players: [{ id: 0, socketId: socket.id }],
+      hostId: playerId,
+      players: [{ id: playerId, socketId: socket.id }],
     };
     rooms.push(room);
 
     const roomDto = gameRoomToDto(room);
+    socket.emit('ASSING_PLAYER_ID', { playerId: playerId });
     socket.emit('UPDATE_ROOM_STATE', { room: roomDto });
   });
 
@@ -63,6 +68,7 @@ io.on('connection', (socket) => {
       room.players.push({ id: newPlayerId, socketId: socket.id });
 
       const roomDto = gameRoomToDto(room);
+      socket.emit('ASSING_PLAYER_ID', { playerId: newPlayerId });
       socket.emit('UPDATE_ROOM_STATE', { room: roomDto });
       const playerDto: PlayerDto = { id: newPlayerId };
       socket.to(`gameroom:${roomId}`).emit('PLAYER_JOINED', { player: playerDto });
