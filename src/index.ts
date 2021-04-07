@@ -1,29 +1,7 @@
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { GameRoomDto } from './dto/GameRoomDto';
+import { GameRoom, gameRoomToDto } from './domain/GameRoom';
 import { PlayerDto } from './dto/PlayerDto';
-
-interface Player {
-  id: number;
-  socketId: string;
-}
-
-interface GameRoom {
-  id: string;
-  hostId: number;
-  players: Player[];
-}
-
-function gameRoomToDto(room: GameRoom): GameRoomDto {
-  const dto: GameRoomDto = {
-    id: room.id,
-    hostId: room.hostId,
-    players: room.players.map((player) => ({
-      id: player.id,
-    })),
-  };
-  return dto;
-}
 
 const rooms: GameRoom[] = [];
 
@@ -35,7 +13,11 @@ const io = new Server(httpServer, {
 });
 
 io.on('connection', (socket) => {
-  console.log('New connection');
+  console.log(`New connection ${socket.id}`);
+
+  socket.on('disconnect', (reason) => {
+    console.log(`Socket ${socket.id} disconnected. Reason: ${reason}`);
+  });
 
   socket.on('message', (args) => {
     console.log(args);
@@ -49,6 +31,7 @@ io.on('connection', (socket) => {
     const room: GameRoom = {
       id: roomId,
       hostId: playerId,
+      state: 'NOT_STARTED',
       players: [{ id: playerId, socketId: socket.id }],
     };
     rooms.push(room);
@@ -74,12 +57,27 @@ io.on('connection', (socket) => {
       socket.to(`gameroom:${roomId}`).emit('PLAYER_JOINED', { player: playerDto });
     }
   });
+
+  socket.on('START_GAME', () => {
+    const room = rooms.find((room) => room.players.some((player) => player.socketId === socket.id));
+    if (!room) {
+      return;
+    }
+    const player = room.players.find((player) => player.socketId === socket.id);
+    if (!player) {
+      return;
+    }
+
+    if (room.hostId !== player.id) {
+      return;
+    }
+
+    room.state = 'STARTED';
+    io.to(`gameroom:${room.id}`).emit('STARTED_GAME');
+  });
 });
 
 const port = 3001;
 httpServer.listen(port, () => {
   console.log(`Server started on port ${port}`);
 });
-function PlayerDto(arg0: (player: Player) => void, as: any, PlayerDto: any): import('./dto/PlayerDto').PlayerDto[] {
-  throw new Error('Function not implemented.');
-}
