@@ -17,6 +17,7 @@ export function gameRoomToDto(room: GameRoom): GameRoomDto {
     state: room.state,
     players: room.players.map((player) => ({
       id: player.id,
+      username: player.username,
     })),
   };
   return dto;

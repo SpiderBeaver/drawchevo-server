@@ -23,7 +23,7 @@ io.on('connection', (socket) => {
     console.log(args);
   });
 
-  socket.on('CREATE_ROOM', () => {
+  socket.on('CREATE_ROOM', ({ username }: { username: string }) => {
     const roomId = Math.random().toString(36).substr(2, 9);
     socket.join(`gameroom:${roomId}`);
 
@@ -32,7 +32,7 @@ io.on('connection', (socket) => {
       id: roomId,
       hostId: playerId,
       state: 'NOT_STARTED',
-      players: [{ id: playerId, socketId: socket.id }],
+      players: [{ id: playerId, socketId: socket.id, username: username }],
     };
     rooms.push(room);
 
@@ -41,19 +41,19 @@ io.on('connection', (socket) => {
     socket.emit('UPDATE_ROOM_STATE', { room: roomDto });
   });
 
-  socket.on('JOIN_ROOM', ({ roomId }: { roomId: string }) => {
+  socket.on('JOIN_ROOM', ({ roomId, username }: { roomId: string; username: string }) => {
     const room = rooms.find((r) => r.id === roomId);
     if (room) {
       socket.join(`gameroom:${roomId}`);
 
       // Maybe should incapsulate this logic. But it works for now.
       const newPlayerId = Math.max(...room.players.map((p) => p.id)) + 1;
-      room.players.push({ id: newPlayerId, socketId: socket.id });
+      room.players.push({ id: newPlayerId, socketId: socket.id, username: username });
 
       const roomDto = gameRoomToDto(room);
       socket.emit('ASSING_PLAYER_ID', { playerId: newPlayerId });
       socket.emit('UPDATE_ROOM_STATE', { room: roomDto });
-      const playerDto: PlayerDto = { id: newPlayerId };
+      const playerDto: PlayerDto = { id: newPlayerId, username: username };
       socket.to(`gameroom:${roomId}`).emit('PLAYER_JOINED', { player: playerDto });
     }
   });
