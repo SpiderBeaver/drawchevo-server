@@ -1,6 +1,13 @@
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 
+interface GameRoom {
+  id: string;
+  players: string[];
+}
+
+const rooms: GameRoom[] = [];
+
 const httpServer = createServer();
 const io = new Server(httpServer, {
   cors: {
@@ -18,14 +25,24 @@ io.on('connection', (socket) => {
   socket.on('CREATE_ROOM', () => {
     const roomId = Math.random().toString(36).substr(2, 9);
     socket.join(`gameroom:${roomId}`);
-    socket.emit('CREATED_ROOM', { roomId: roomId });
+
+    const room: GameRoom = {
+      id: roomId,
+      players: [socket.id],
+    };
+    rooms.push(room);
+
+    socket.emit('UPDATE_ROOM_STATE', { room: room });
   });
 
   socket.on('JOIN_ROOM', ({ roomId }: { roomId: string }) => {
-    const roomIdFull = `gameroom:${roomId}`;
-    if (io.sockets.adapter.rooms.has(roomIdFull)) {
-      socket.join(roomIdFull);
-      socket.emit('JOINED_ROOM', { roomId: roomId });
+    const room = rooms.find((r) => r.id === roomId);
+    if (room) {
+      socket.join(`gameroom:${roomId}`);
+
+      room.players.push(socket.id);
+      socket.emit('UPDATE_ROOM_STATE', { room: room });
+      socket.to(`gameroom:${roomId}`).emit('PLAYER_JOINED', { playerId: socket.id });
     }
   });
 });
