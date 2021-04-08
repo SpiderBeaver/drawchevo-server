@@ -1,5 +1,6 @@
 import { GameRoomDto } from '../dto/GameRoomDto';
 import { selectRandomElement } from '../utils/utils';
+import Drawing from './Drawing';
 import { Phrase } from './Phrase';
 import { Player } from './Player';
 
@@ -11,6 +12,7 @@ export interface GameRoom {
   state: GameState;
   players: Player[];
   originalPhrases: Phrase[];
+  drawings: { playerId: number; drawing: Drawing }[];
 }
 
 export function gameRoomToDto(room: GameRoom, currentPlayerId: number): GameRoomDto {

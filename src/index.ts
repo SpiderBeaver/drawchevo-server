@@ -4,6 +4,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { GameRoom, gameRoomToDto, selectPhrases } from './domain/GameRoom';
 import { PlayerDto } from './dto/PlayerDto';
+import DrawingDto, { drawingFromDto } from './dto/DrawingDto';
 
 const phrases = fs.readFileSync(path.join(__dirname, '../static/phrases.txt'), { encoding: 'utf8' }).split('\n');
 
@@ -38,6 +39,7 @@ io.on('connection', (socket) => {
       state: 'NOT_STARTED',
       players: [{ id: playerId, socket: socket, username: username }],
       originalPhrases: [],
+      drawings: [],
     };
     rooms.push(room);
 
@@ -88,6 +90,20 @@ io.on('connection', (socket) => {
       const roomDto = gameRoomToDto(room, player.id);
       player.socket.emit('UPDATE_ROOM_STATE', { room: roomDto });
     });
+  });
+
+  socket.on('DRAWING_DONE', ({ drawing: drawingDto }: { drawing: DrawingDto }) => {
+    const room = rooms.find((room) => room.players.some((player) => player.socket.id === socket.id));
+    if (!room) {
+      return;
+    }
+    const player = room.players.find((player) => player.socket.id === socket.id);
+    if (!player) {
+      return;
+    }
+
+    room.drawings.push({ playerId: player.id, drawing: drawingFromDto(drawingDto) });
+    console.log(room);
   });
 });
 
