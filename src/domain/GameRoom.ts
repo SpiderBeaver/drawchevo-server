@@ -23,6 +23,7 @@ export function gameRoomToDto(room: GameRoom, currentPlayerId: number): GameRoom
     players: room.players.map((player) => ({
       id: player.id,
       username: player.username,
+      status: player.status,
     })),
     originalPhrase: room.originalPhrases.find((p) => p.playerId === currentPlayerId)?.text,
   };

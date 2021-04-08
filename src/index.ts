@@ -3,8 +3,9 @@ import path from 'path';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { GameRoom, gameRoomToDto, selectPhrases } from './domain/GameRoom';
-import { PlayerDto } from './dto/PlayerDto';
+import { PlayerDto, playerToDto } from './dto/PlayerDto';
 import DrawingDto, { drawingFromDto } from './dto/DrawingDto';
+import { Player } from './domain/Player';
 
 const phrases = fs.readFileSync(path.join(__dirname, '../static/phrases.txt'), { encoding: 'utf8' }).split('\n');
 
@@ -37,7 +38,7 @@ io.on('connection', (socket) => {
       id: roomId,
       hostId: playerId,
       state: 'NOT_STARTED',
-      players: [{ id: playerId, socket: socket, username: username }],
+      players: [{ id: playerId, socket: socket, username: username, status: 'idle' }],
       originalPhrases: [],
       drawings: [],
     };
@@ -55,12 +56,15 @@ io.on('connection', (socket) => {
 
       // Maybe should incapsulate this logic. But it works for now.
       const newPlayerId = Math.max(...room.players.map((p) => p.id)) + 1;
-      room.players.push({ id: newPlayerId, socket: socket, username: username });
+      const newPlayer: Player = { id: newPlayerId, socket: socket, username: username, status: 'idle' };
+      room.players.push(newPlayer);
 
       const roomDto = gameRoomToDto(room, newPlayerId);
       socket.emit('ASSING_PLAYER_ID', { playerId: newPlayerId });
       socket.emit('UPDATE_ROOM_STATE', { room: roomDto });
-      const playerDto: PlayerDto = { id: newPlayerId, username: username };
+      const playerDto = playerToDto(newPlayer);
+      // TODO: Think about from moving away from socket room and just do broadcasting manually.
+      // So we don't have to mantain the consistency between game rooms and socket.io rooms.
       socket.to(`gameroom:${roomId}`).emit('PLAYER_JOINED', { player: playerDto });
     }
   });
@@ -84,6 +88,7 @@ io.on('connection', (socket) => {
       room.players.map((p) => p.id),
       phrases
     );
+    room.players.forEach((player) => (player.status = 'drawing'));
     // NOTE: It's probably better to send just the phrases. But we can simply refresh the fame state as well.
     // NOTE: We don't want to send all the phrases to all the players. Just send the ones they need to draw.
     room.players.forEach((player) => {
@@ -102,7 +107,11 @@ io.on('connection', (socket) => {
       return;
     }
 
+    player.status = 'finished_drawing';
     room.drawings.push({ playerId: player.id, drawing: drawingFromDto(drawingDto) });
+    room.players.forEach((p) => {
+      p.socket.emit('PLAYER_FINISHED_DRAWING', { playerId: player.id });
+    });
     console.log(room);
   });
 });
