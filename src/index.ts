@@ -2,9 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { GameRoom, gameRoomToDto, selectPhrases } from './domain/GameRoom';
+import { GameRoom, gameRoomToDto, selectNextRoundPlayer, selectPhrases } from './domain/GameRoom';
 import { PlayerDto, playerToDto } from './dto/PlayerDto';
-import DrawingDto, { drawingFromDto } from './dto/DrawingDto';
+import DrawingDto, { drawingFromDto, drawingToDto } from './dto/DrawingDto';
 import { Player } from './domain/Player';
 
 const phrases = fs.readFileSync(path.join(__dirname, '../static/phrases.txt'), { encoding: 'utf8' }).split('\n');
@@ -41,6 +41,9 @@ io.on('connection', (socket) => {
       players: [{ id: playerId, socket: socket, username: username, status: 'idle' }],
       originalPhrases: [],
       drawings: [],
+      fakePhrases: [],
+      currentRoundPlayerId: null,
+      finishedRoundsPlayersIds: [],
     };
     rooms.push(room);
 
@@ -102,17 +105,32 @@ io.on('connection', (socket) => {
     if (!room) {
       return;
     }
-    const player = room.players.find((player) => player.socket.id === socket.id);
-    if (!player) {
+    const drawingPlayer = room.players.find((player) => player.socket.id === socket.id);
+    if (!drawingPlayer) {
       return;
     }
 
-    player.status = 'finished_drawing';
-    room.drawings.push({ playerId: player.id, drawing: drawingFromDto(drawingDto) });
-    room.players.forEach((p) => {
-      p.socket.emit('PLAYER_FINISHED_DRAWING', { playerId: player.id });
+    drawingPlayer.status = 'finished_drawing';
+    room.drawings.push({ playerId: drawingPlayer.id, drawing: drawingFromDto(drawingDto) });
+    room.players.forEach((player) => {
+      player.socket.emit('PLAYER_FINISHED_DRAWING', { playerId: drawingPlayer.id });
     });
-    console.log(room);
+
+    const everyoneFinishedDrawing = room.players.every((player) => player.status === 'finished_drawing');
+    if (everyoneFinishedDrawing) {
+      const nextRoundPlayerId = selectNextRoundPlayer(room);
+      if (nextRoundPlayerId !== null) {
+        room.state = 'MAKING_FAKE_PHRASES';
+        room.currentRoundPlayerId = nextRoundPlayerId;
+        const currentRoundDrawing = room.drawings.find((d) => d.playerId === nextRoundPlayerId)?.drawing;
+        if (currentRoundDrawing) {
+          const currentRoundDrawingDto = drawingToDto(currentRoundDrawing);
+          room.players.forEach((player) => {
+            player.socket.emit('START_MAKING_FAKE_PHRASES', { drawing: currentRoundDrawingDto });
+          });
+        }
+      }
+    }
   });
 });
 
