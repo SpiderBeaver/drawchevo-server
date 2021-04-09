@@ -126,11 +126,29 @@ io.on('connection', (socket) => {
         if (currentRoundDrawing) {
           const currentRoundDrawingDto = drawingToDto(currentRoundDrawing);
           room.players.forEach((player) => {
+            player.status = 'making_fake_phrase';
             player.socket.emit('START_MAKING_FAKE_PHRASES', { drawing: currentRoundDrawingDto });
           });
         }
       }
     }
+  });
+
+  socket.on('FAKE_PHRASE_DONE', ({ text }: { text: string }) => {
+    const room = rooms.find((room) => room.players.some((player) => player.socket.id === socket.id));
+    if (!room) {
+      return;
+    }
+    const playerWithPhrase = room.players.find((player) => player.socket.id === socket.id);
+    if (!playerWithPhrase) {
+      return;
+    }
+
+    room.fakePhrases.push({ playerId: playerWithPhrase.id, text: text });
+    playerWithPhrase.status = 'finished_making_fake_phrase';
+    room.players.forEach((player) => {
+      player.socket.emit('PLAYER_FINISHED_MAKING_FAKE_PHRASE', { playerId: playerWithPhrase.id });
+    });
   });
 });
 
