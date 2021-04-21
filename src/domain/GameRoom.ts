@@ -10,7 +10,7 @@ import { Player } from './Player';
 
 export const DEFAULT_HOST_ID = 0;
 
-export type GameState = 'NOT_STARTED' | 'DRAWING' | 'MAKING_FAKE_PHRASES';
+export type GameState = 'NOT_STARTED' | 'DRAWING' | 'MAKING_FAKE_PHRASES' | 'VOTING';
 
 export interface GameRoom {
   id: string;
@@ -138,19 +138,37 @@ export function playerFinishedFakePhrase(room: GameRoom, playerWithPhrase: Playe
   });
 
   if (room.players.every((player) => player.status == 'finished_making_fake_phrase')) {
-    room.finishedRoundsPlayersIds.push(room.currentRoundPlayerId!);
-    const nextRoundPlayerId = selectNextRoundPlayer(room);
-    if (nextRoundPlayerId !== null) {
-      room.state = 'MAKING_FAKE_PHRASES';
-      room.currentRoundPlayerId = nextRoundPlayerId;
-      const currentRoundDrawing = room.drawings.find((d) => d.playerId === nextRoundPlayerId)?.drawing;
-      if (currentRoundDrawing) {
-        const currentRoundDrawingDto = drawingToDto(currentRoundDrawing);
-        room.players.forEach((player) => {
-          player.status = 'making_fake_phrase';
-          player.socket.emit('START_MAKING_FAKE_PHRASES', { drawing: currentRoundDrawingDto });
-        });
-      }
+    startVoting(room);
+  }
+}
+
+function startVoting(room: GameRoom) {
+  room.state = 'VOTING';
+  room.players.forEach((player) => {
+    player.status = 'voting';
+    // TODO: Maybe a better way is to send phrases with some kind of IDs.
+    const voting_options = [...room.fakePhrases, currentOriginalPhrase(room)].map((phrase) => phrase.text);
+    player.socket.emit('START_VOTING', { options: voting_options });
+  });
+}
+
+function currentOriginalPhrase(room: GameRoom): Phrase {
+  return room.originalPhrases.find((p) => p.playerId == room.currentRoundPlayerId)!;
+}
+
+function startNextRound(room: GameRoom) {
+  room.finishedRoundsPlayersIds.push(room.currentRoundPlayerId!);
+  const nextRoundPlayerId = selectNextRoundPlayer(room);
+  if (nextRoundPlayerId !== null) {
+    room.state = 'MAKING_FAKE_PHRASES';
+    room.currentRoundPlayerId = nextRoundPlayerId;
+    const currentRoundDrawing = room.drawings.find((d) => d.playerId === nextRoundPlayerId)?.drawing;
+    if (currentRoundDrawing) {
+      const currentRoundDrawingDto = drawingToDto(currentRoundDrawing);
+      room.players.forEach((player) => {
+        player.status = 'making_fake_phrase';
+        player.socket.emit('START_MAKING_FAKE_PHRASES', { drawing: currentRoundDrawingDto });
+      });
     }
   }
 }
