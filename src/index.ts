@@ -149,6 +149,23 @@ io.on('connection', (socket) => {
     room.players.forEach((player) => {
       player.socket.emit('PLAYER_FINISHED_MAKING_FAKE_PHRASE', { playerId: playerWithPhrase.id });
     });
+
+    if (room.players.every((player) => player.status == 'finished_making_fake_phrase')) {
+      room.finishedRoundsPlayersIds.push(room.currentRoundPlayerId!);
+      const nextRoundPlayerId = selectNextRoundPlayer(room);
+      if (nextRoundPlayerId !== null) {
+        room.state = 'MAKING_FAKE_PHRASES';
+        room.currentRoundPlayerId = nextRoundPlayerId;
+        const currentRoundDrawing = room.drawings.find((d) => d.playerId === nextRoundPlayerId)?.drawing;
+        if (currentRoundDrawing) {
+          const currentRoundDrawingDto = drawingToDto(currentRoundDrawing);
+          room.players.forEach((player) => {
+            player.status = 'making_fake_phrase';
+            player.socket.emit('START_MAKING_FAKE_PHRASES', { drawing: currentRoundDrawingDto });
+          });
+        }
+      }
+    }
   });
 });
 
