@@ -23,6 +23,8 @@ export interface GameRoom {
   fakePhrases: Phrase[];
   currentRoundPlayerId: number | null;
   finishedRoundsPlayersIds: number[];
+  // TODO: Convert to map. Store phrase ID insted of text.
+  votes: { playerId: number; phrase: string }[];
 }
 
 export function createRoom(host: Player, phrasesPool: string[]): GameRoom {
@@ -38,6 +40,7 @@ export function createRoom(host: Player, phrasesPool: string[]): GameRoom {
     fakePhrases: [],
     currentRoundPlayerId: null,
     finishedRoundsPlayersIds: [],
+    votes: [],
   };
   const roomDto = gameRoomToDto(room, host.id);
   host.socket.emit('UPDATE_ROOM_STATE', { room: roomDto });
@@ -154,6 +157,14 @@ function startVoting(room: GameRoom) {
 
 function currentOriginalPhrase(room: GameRoom): Phrase {
   return room.originalPhrases.find((p) => p.playerId == room.currentRoundPlayerId)!;
+}
+
+export function playerVotedForPhrase(room: GameRoom, votedPlayer: Player, phrase: string) {
+  votedPlayer.status = 'finished_voting';
+  room.votes.push({ playerId: votedPlayer.id, phrase: phrase });
+  room.players.forEach((player) => {
+    player.socket.emit('PLAYER_FINISHED_VOTING', { playerId: votedPlayer.id });
+  });
 }
 
 function startNextRound(room: GameRoom) {
