@@ -10,7 +10,7 @@ import { Player } from './Player';
 
 export const DEFAULT_HOST_ID = 0;
 
-export type GameState = 'NOT_STARTED' | 'DRAWING' | 'MAKING_FAKE_PHRASES' | 'VOTING';
+export type GameState = 'NOT_STARTED' | 'DRAWING' | 'MAKING_FAKE_PHRASES' | 'VOTING' | 'SHOWING_VOTING_RESULTS';
 
 export interface GameRoom {
   id: string;
@@ -164,6 +164,19 @@ export function playerVotedForPhrase(room: GameRoom, votedPlayer: Player, phrase
   room.votes.push({ playerId: votedPlayer.id, phrase: phrase });
   room.players.forEach((player) => {
     player.socket.emit('PLAYER_FINISHED_VOTING', { playerId: votedPlayer.id });
+  });
+
+  if (room.players.every((player) => player.status === 'finished_voting')) {
+    showVotingResults(room);
+  }
+}
+
+function showVotingResults(room: GameRoom) {
+  room.state = 'SHOWING_VOTING_RESULTS';
+
+  const originalPhrase = room.originalPhrases.find((phrase) => phrase.playerId === room.currentRoundPlayerId)!.text;
+  room.players.forEach((player) => {
+    player.socket.emit('SHOW_VOTING_RESULTS', { votes: room.votes, originalPhrase: originalPhrase });
   });
 }
 
