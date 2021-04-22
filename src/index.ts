@@ -12,6 +12,7 @@ import {
   playerFinishedFakePhrase,
   playerVotedForPhrase,
   startDrawing,
+  startNextRound,
 } from './domain/GameRoom';
 import { createPlayer } from './domain/Player';
 import DrawingDto, { drawingFromDto } from './dto/DrawingDto';
@@ -113,6 +114,22 @@ io.on('connection', (socket) => {
     }
 
     playerVotedForPhrase(room, socketPlayer, phrase);
+  });
+
+  socket.on('START_NEXT_ROUND', () => {
+    const room = rooms.find((room) => room.players.some((player) => player.socket.id === socket.id));
+    if (!room) {
+      return;
+    }
+    const socketPlayer = room.players.find((player) => player.socket.id === socket.id);
+    if (!socketPlayer) {
+      return;
+    }
+    if (room.hostId !== socketPlayer.id) {
+      return;
+    }
+
+    startNextRound(room);
   });
 });
 
