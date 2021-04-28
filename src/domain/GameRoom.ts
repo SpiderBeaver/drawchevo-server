@@ -5,6 +5,7 @@ import { selectRandomElement } from '../utils/utils';
 import Drawing from './Drawing';
 import { Phrase } from './Phrase';
 import { Player } from './Player';
+import { getPhraseByText, newRound, Round } from './Round';
 
 // TODO: Think about extracting socket interactions from this module.
 
@@ -20,11 +21,8 @@ export interface GameRoom {
   phrasesPool: string[];
   originalPhrases: Phrase[];
   drawings: { playerId: number; drawing: Drawing }[];
-  fakePhrases: Phrase[];
-  currentRoundPlayerId: number | null;
   finishedRoundsPlayersIds: number[];
-  // TODO: Convert to map. Store phrase ID insted of text.
-  votes: { playerId: number; phrase: string }[];
+  currentRound: Round | null;
 }
 
 export function createRoom(host: Player, phrasesPool: string[]): GameRoom {
@@ -37,10 +35,8 @@ export function createRoom(host: Player, phrasesPool: string[]): GameRoom {
     phrasesPool: phrasesPool,
     originalPhrases: [],
     drawings: [],
-    fakePhrases: [],
-    currentRoundPlayerId: null,
     finishedRoundsPlayersIds: [],
-    votes: [],
+    currentRound: null,
   };
   const roomDto = gameRoomToDto(room, host.id);
   host.socket.emit('UPDATE_ROOM_STATE', { room: roomDto });
@@ -106,25 +102,31 @@ export function playerFinishedDrawing(room: GameRoom, drawingPlayer: Player, dra
 
   const everyoneFinishedDrawing = room.players.every((player) => player.status === 'finished_drawing');
   if (everyoneFinishedDrawing) {
+    startNextRound(room);
+  }
+}
+
+export function startNextRound(room: GameRoom) {
+  if (room.currentRound != null) {
+    room.finishedRoundsPlayersIds.push(room.currentRound.roundPlayer.id);
+  }
+
+  const nextRoundPlayer = selectNextRoundPlayer(room);
+  if (nextRoundPlayer !== null) {
+    const newRoundOriginalPhrase = room.originalPhrases.find((p) => p.playerId === nextRoundPlayer.id)!;
+    const newRoundDrawing = room.drawings.find((d) => d.playerId === nextRoundPlayer.id)?.drawing!;
+    room.currentRound = newRound(nextRoundPlayer, newRoundOriginalPhrase, newRoundDrawing);
     startMakingFakePhrases(room);
   }
 }
 
 function startMakingFakePhrases(room: GameRoom) {
-  const nextRoundPlayerId = selectNextRoundPlayer(room);
-  if (nextRoundPlayerId !== null) {
-    room.state = 'MAKING_FAKE_PHRASES';
-    room.currentRoundPlayerId = nextRoundPlayerId;
-    room.fakePhrases = [];
-    const currentRoundDrawing = room.drawings.find((d) => d.playerId === nextRoundPlayerId)?.drawing;
-    if (currentRoundDrawing) {
-      const currentRoundDrawingDto = drawingToDto(currentRoundDrawing);
-      room.players.forEach((player) => {
-        player.status = 'making_fake_phrase';
-        player.socket.emit('START_MAKING_FAKE_PHRASES', { drawing: currentRoundDrawingDto });
-      });
-    }
-  }
+  room.state = 'MAKING_FAKE_PHRASES';
+  const currentRoundDrawingDto = drawingToDto(room.currentRound!.drawing);
+  room.players.forEach((player) => {
+    player.status = 'making_fake_phrase';
+    player.socket.emit('START_MAKING_FAKE_PHRASES', { drawing: currentRoundDrawingDto });
+  });
 }
 
 function selectPhrases(playerIds: number[], allPhrases: string[]): Phrase[] {
@@ -139,7 +141,7 @@ function selectPhrases(playerIds: number[], allPhrases: string[]): Phrase[] {
 }
 
 export function playerFinishedFakePhrase(room: GameRoom, playerWithPhrase: Player, phraseText: string) {
-  room.fakePhrases.push({ playerId: playerWithPhrase.id, text: phraseText });
+  room.currentRound!.fakePhrases.push({ playerId: playerWithPhrase.id, text: phraseText });
   playerWithPhrase.status = 'finished_making_fake_phrase';
   room.players.forEach((player) => {
     player.socket.emit('PLAYER_FINISHED_MAKING_FAKE_PHRASE', { playerId: playerWithPhrase.id });
@@ -151,23 +153,21 @@ export function playerFinishedFakePhrase(room: GameRoom, playerWithPhrase: Playe
 }
 
 function startVoting(room: GameRoom) {
+  const currentRound = room.currentRound!;
   room.state = 'VOTING';
-  room.votes = [];
   room.players.forEach((player) => {
     player.status = 'voting';
     // TODO: Maybe a better way is to send phrases with some kind of IDs.
-    const voting_options = [...room.fakePhrases, currentOriginalPhrase(room)].map((phrase) => phrase.text);
+    const voting_options = [...currentRound.fakePhrases, currentRound.originalPhrase].map((phrase) => phrase.text);
     player.socket.emit('START_VOTING', { options: voting_options });
   });
 }
 
-function currentOriginalPhrase(room: GameRoom): Phrase {
-  return room.originalPhrases.find((p) => p.playerId == room.currentRoundPlayerId)!;
-}
-
-export function playerVotedForPhrase(room: GameRoom, votedPlayer: Player, phrase: string) {
+export function playerVotedForPhrase(room: GameRoom, votedPlayer: Player, phraseText: string) {
+  const currentRound = room.currentRound!;
   votedPlayer.status = 'finished_voting';
-  room.votes.push({ playerId: votedPlayer.id, phrase: phrase });
+  const votedPhrase = getPhraseByText(currentRound, phraseText)!;
+  currentRound.votes.push({ playerId: votedPlayer.id, phrase: votedPhrase });
   room.players.forEach((player) => {
     player.socket.emit('PLAYER_FINISHED_VOTING', { playerId: votedPlayer.id });
   });
@@ -178,38 +178,23 @@ export function playerVotedForPhrase(room: GameRoom, votedPlayer: Player, phrase
 }
 
 function showVotingResults(room: GameRoom) {
+  const currentRound = room.currentRound!;
   room.state = 'SHOWING_VOTING_RESULTS';
-
-  const originalPhrase = room.originalPhrases.find((phrase) => phrase.playerId === room.currentRoundPlayerId)!.text;
   room.players.forEach((player) => {
-    player.socket.emit('SHOW_VOTING_RESULTS', { votes: room.votes, originalPhrase: originalPhrase });
+    player.socket.emit('SHOW_VOTING_RESULTS', {
+      votes: currentRound.votes.map((v) => ({ playerId: v.playerId, phrase: v.phrase.text })),
+      originalPhrase: currentRound.originalPhrase.text,
+    });
   });
 }
 
-export function startNextRound(room: GameRoom) {
-  room.finishedRoundsPlayersIds.push(room.currentRoundPlayerId!);
-  const nextRoundPlayerId = selectNextRoundPlayer(room);
-  if (nextRoundPlayerId !== null) {
-    room.state = 'MAKING_FAKE_PHRASES';
-    room.fakePhrases = [];
-    room.currentRoundPlayerId = nextRoundPlayerId;
-    const currentRoundDrawing = room.drawings.find((d) => d.playerId === nextRoundPlayerId)?.drawing;
-    if (currentRoundDrawing) {
-      const currentRoundDrawingDto = drawingToDto(currentRoundDrawing);
-      room.players.forEach((player) => {
-        player.status = 'making_fake_phrase';
-        player.socket.emit('START_MAKING_FAKE_PHRASES', { drawing: currentRoundDrawingDto });
-      });
-    }
-  }
-}
-
-export function selectNextRoundPlayer(room: GameRoom): number | null {
+export function selectNextRoundPlayer(room: GameRoom): Player | null {
   const playersIds = room.players.map((player) => player.id);
   const availablePlayersIds = playersIds.filter((id) => !room.finishedRoundsPlayersIds.includes(id));
   if (availablePlayersIds.length === 0) {
     return null;
   }
   const nextRoundPlayerId = selectRandomElement(availablePlayersIds);
-  return nextRoundPlayerId;
+  const nextRoundPlayer = room.players.find((p) => p.id === nextRoundPlayerId) ?? null;
+  return nextRoundPlayer;
 }
