@@ -123,11 +123,15 @@ export function startNextRound(room: GameRoom) {
 }
 
 function startMakingFakePhrases(room: GameRoom) {
+  const currentRound = room.currentRound!;
   room.state = 'MAKING_FAKE_PHRASES';
-  const currentRoundDrawingDto = drawingToDto(room.currentRound!.drawing);
+  const currentRoundDrawingDto = drawingToDto(currentRound.drawing);
   room.players.forEach((player) => {
     player.status = 'making_fake_phrase';
-    player.socket.emit('START_MAKING_FAKE_PHRASES', { drawing: currentRoundDrawingDto });
+    player.socket.emit('START_MAKING_FAKE_PHRASES', {
+      currentPlayerId: currentRound.roundPlayer.id,
+      drawing: currentRoundDrawingDto,
+    });
   });
 }
 
@@ -143,13 +147,18 @@ function selectPhrases(playerIds: number[], allPhrases: string[]): Phrase[] {
 }
 
 export function playerFinishedFakePhrase(room: GameRoom, playerWithPhrase: Player, phraseText: string) {
-  room.currentRound!.fakePhrases.push({ playerId: playerWithPhrase.id, text: phraseText });
+  const currentRound = room.currentRound!;
+
+  currentRound.fakePhrases.push({ playerId: playerWithPhrase.id, text: phraseText });
   playerWithPhrase.status = 'finished_making_fake_phrase';
   room.players.forEach((player) => {
     player.socket.emit('PLAYER_FINISHED_MAKING_FAKE_PHRASE', { playerId: playerWithPhrase.id });
   });
 
-  if (room.players.every((player) => player.status == 'finished_making_fake_phrase')) {
+  const everyoneDone = room.players
+    .filter((player) => player.id !== currentRound.roundPlayer.id)
+    .every((player) => player.status == 'finished_making_fake_phrase');
+  if (everyoneDone) {
     startVoting(room);
   }
 }
