@@ -28,7 +28,7 @@ export interface GameRoom {
 }
 
 export function createRoom(host: Player, phrasesPool: string[]): GameRoom {
-  const roomId = Math.random().toString(36).substr(2, 9);
+  const roomId = generateRoomId();
   const room: GameRoom = {
     id: roomId,
     hostId: host.id,
@@ -43,6 +43,11 @@ export function createRoom(host: Player, phrasesPool: string[]): GameRoom {
   const roomDto = gameRoomToDto(room, host.id);
   host.socket.emit('UPDATE_ROOM_STATE', { room: roomDto });
   return room;
+}
+
+function generateRoomId(): string {
+  const id = Math.floor(100000 + Math.random() * 900000);
+  return id.toString();
 }
 
 export function gameRoomToDto(room: GameRoom, currentPlayerId: number): GameRoomDto {
