@@ -103,7 +103,7 @@ io.on('connection', (socket) => {
     playerFinishedFakePhrase(room, playerWithPhrase, text);
   });
 
-  socket.on('VOTE_FOR_PHRASE', ({ phrase }: { phrase: string }) => {
+  socket.on('VOTE_FOR_PHRASE', ({ phrasePlayerId }: { phrasePlayerId: number }) => {
     const room = rooms.find((room) => room.players.some((player) => player.socket.id === socket.id));
     if (!room) {
       return;
@@ -113,7 +113,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    playerVotedForPhrase(room, socketPlayer, phrase);
+    playerVotedForPhrase(room, socketPlayer, phrasePlayerId);
   });
 
   socket.on('START_NEXT_ROUND', () => {

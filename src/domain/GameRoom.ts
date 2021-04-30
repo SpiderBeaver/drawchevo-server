@@ -1,11 +1,13 @@
 import { drawingToDto } from '../dto/DrawingDto';
 import { GameRoomDto } from '../dto/GameRoomDto';
+import { phraseToDto } from '../dto/PhraseDto';
 import { playerToDto } from '../dto/PlayerDto';
+import { voteToDto } from '../dto/VoteDto';
 import { selectRandomElement } from '../utils/utils';
 import Drawing from './Drawing';
 import { Phrase } from './Phrase';
 import { Player } from './Player';
-import { getPhraseByText, newRound, Round } from './Round';
+import { getPhraseByPlayerId, getPhraseByText, newRound, Round } from './Round';
 
 // TODO: Think about extracting socket interactions from this module.
 
@@ -53,7 +55,7 @@ export function gameRoomToDto(room: GameRoom, currentPlayerId: number): GameRoom
       username: player.username,
       status: player.status,
     })),
-    originalPhrase: room.originalPhrases.find((p) => p.playerId === currentPlayerId)?.text ?? null,
+    originalPhrase: room.originalPhrases.find((p) => p.playerId === currentPlayerId) ?? null,
   };
   return dto;
 }
@@ -158,15 +160,16 @@ function startVoting(room: GameRoom) {
   room.players.forEach((player) => {
     player.status = 'voting';
     // TODO: Maybe a better way is to send phrases with some kind of IDs.
-    const voting_options = [...currentRound.fakePhrases, currentRound.originalPhrase].map((phrase) => phrase.text);
-    player.socket.emit('START_VOTING', { options: voting_options });
+    const phrases = [...currentRound.fakePhrases, currentRound.originalPhrase];
+    const phrasesDto = phrases.map((phrase) => phraseToDto(phrase));
+    player.socket.emit('START_VOTING', { phrases: phrasesDto });
   });
 }
 
-export function playerVotedForPhrase(room: GameRoom, votedPlayer: Player, phraseText: string) {
+export function playerVotedForPhrase(room: GameRoom, votedPlayer: Player, phrasePlayerId: number) {
   const currentRound = room.currentRound!;
   votedPlayer.status = 'finished_voting';
-  const votedPhrase = getPhraseByText(currentRound, phraseText)!;
+  const votedPhrase = getPhraseByPlayerId(currentRound, phrasePlayerId)!;
   currentRound.votes.push({ playerId: votedPlayer.id, phrase: votedPhrase });
   room.players.forEach((player) => {
     player.socket.emit('PLAYER_FINISHED_VOTING', { playerId: votedPlayer.id });
@@ -182,8 +185,8 @@ function showVotingResults(room: GameRoom) {
   room.state = 'SHOWING_VOTING_RESULTS';
   room.players.forEach((player) => {
     player.socket.emit('SHOW_VOTING_RESULTS', {
-      votes: currentRound.votes.map((v) => ({ playerId: v.playerId, phrase: v.phrase.text })),
-      originalPhrase: currentRound.originalPhrase.text,
+      votes: currentRound.votes.map((vote) => voteToDto(vote)),
+      originalPhrase: phraseToDto(currentRound.originalPhrase),
     });
   });
 }

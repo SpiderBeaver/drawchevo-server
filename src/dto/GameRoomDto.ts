@@ -1,4 +1,5 @@
 import { GameState } from '../domain/GameRoom';
+import { PhraseDto } from './PhraseDto';
 import { PlayerDto } from './PlayerDto';
 
 export interface GameRoomDto {
@@ -6,5 +7,5 @@ export interface GameRoomDto {
   hostId: number;
   state: GameState;
   players: PlayerDto[];
-  originalPhrase: string | null;
+  originalPhrase: PhraseDto | null;
 }
