@@ -12,7 +12,7 @@ import {
   startNextRound,
   GameRoom,
 } from './domain/GameRoom';
-import { createPlayer } from './domain/Player';
+import { createPlayer, Player } from './domain/Player';
 import DrawingDto, { drawingFromDto } from './dto/DrawingDto';
 import { usePhrasesCollection } from './phrasesCollection';
 
@@ -22,6 +22,7 @@ export function initializeSocket(httpServer: http.Server, rooms: GameRoom[]) {
       origin: '*',
     },
   });
+
   setupListeners(ioServer, rooms);
 }
 
@@ -61,15 +62,12 @@ function setupListeners(ioServer: Server, rooms: GameRoom[]) {
     });
 
     socket.on('START_GAME', () => {
-      const room = rooms.find((room) => room.players.some((player) => player.socket.id === socket.id));
-      if (!room) {
+      const [socketPlayer, room] = findPlayerBySocket(rooms, socket.id);
+      if (!socketPlayer || !room) {
         return;
       }
-      const player = room.players.find((player) => player.socket.id === socket.id);
-      if (!player) {
-        return;
-      }
-      if (room.hostId !== player.id) {
+
+      if (room.hostId !== socketPlayer.id) {
         return;
       }
 
@@ -77,39 +75,27 @@ function setupListeners(ioServer: Server, rooms: GameRoom[]) {
     });
 
     socket.on('DRAWING_DONE', ({ drawing: drawingDto }: { drawing: DrawingDto }) => {
-      const room = rooms.find((room) => room.players.some((player) => player.socket.id === socket.id));
-      if (!room) {
-        return;
-      }
-      const drawingPlayer = room.players.find((player) => player.socket.id === socket.id);
-      if (!drawingPlayer) {
+      const [socketPlayer, room] = findPlayerBySocket(rooms, socket.id);
+      if (!socketPlayer || !room) {
         return;
       }
 
       const drawing = drawingFromDto(drawingDto);
-      playerFinishedDrawing(room, drawingPlayer, drawing);
+      playerFinishedDrawing(room, socketPlayer, drawing);
     });
 
     socket.on('FAKE_PHRASE_DONE', ({ text }: { text: string }) => {
-      const room = rooms.find((room) => room.players.some((player) => player.socket.id === socket.id));
-      if (!room) {
-        return;
-      }
-      const playerWithPhrase = room.players.find((player) => player.socket.id === socket.id);
-      if (!playerWithPhrase) {
+      const [socketPlayer, room] = findPlayerBySocket(rooms, socket.id);
+      if (!socketPlayer || !room) {
         return;
       }
 
-      playerFinishedFakePhrase(room, playerWithPhrase, text);
+      playerFinishedFakePhrase(room, socketPlayer, text);
     });
 
     socket.on('VOTE_FOR_PHRASE', ({ phrasePlayerId }: { phrasePlayerId: number }) => {
-      const room = rooms.find((room) => room.players.some((player) => player.socket.id === socket.id));
-      if (!room) {
-        return;
-      }
-      const socketPlayer = room.players.find((player) => player.socket.id === socket.id);
-      if (!socketPlayer) {
+      const [socketPlayer, room] = findPlayerBySocket(rooms, socket.id);
+      if (!socketPlayer || !room) {
         return;
       }
 
@@ -117,14 +103,11 @@ function setupListeners(ioServer: Server, rooms: GameRoom[]) {
     });
 
     socket.on('START_NEXT_ROUND', () => {
-      const room = rooms.find((room) => room.players.some((player) => player.socket.id === socket.id));
-      if (!room) {
+      const [socketPlayer, room] = findPlayerBySocket(rooms, socket.id);
+      if (!socketPlayer || !room) {
         return;
       }
-      const socketPlayer = room.players.find((player) => player.socket.id === socket.id);
-      if (!socketPlayer) {
-        return;
-      }
+
       if (room.hostId !== socketPlayer.id) {
         return;
       }
@@ -132,4 +115,10 @@ function setupListeners(ioServer: Server, rooms: GameRoom[]) {
       startNextRound(room);
     });
   });
+}
+
+function findPlayerBySocket(rooms: GameRoom[], socketId: string): [Player | undefined, GameRoom | undefined] {
+  const room = rooms.find((room) => room.players.some((player) => player.socket.id === socketId));
+  const player = room?.players.find((player) => player.socket.id === socketId);
+  return [player, room];
 }
