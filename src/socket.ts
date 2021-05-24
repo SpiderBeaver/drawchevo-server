@@ -11,6 +11,7 @@ import {
   playerVotedForPhrase,
   startNextRound,
   GameRoom,
+  gameRoomToDto,
 } from './domain/GameRoom';
 import { createPlayer, Player } from './domain/Player';
 import DrawingDto, { drawingFromDto } from './dto/DrawingDto';
@@ -58,6 +59,16 @@ function setupListeners(ioServer: Server, rooms: GameRoom[]) {
         const newPlayerId = nextPlayerId(room);
         const newPlayer = createPlayer(newPlayerId, username, socket);
         addPlayer(room, newPlayer);
+      }
+    });
+
+    socket.on('RECONNECT', ({ playerToken }: { playerToken: string }) => {
+      const [player, room] = findPlayerByToken(rooms, playerToken);
+      if (player && room) {
+        player.socket = socket;
+        socket.emit('ASSING_PLAYER_ID', { playerId: player.id });
+        const roomDto = gameRoomToDto(room, player.id);
+        socket.emit('UPDATE_ROOM_STATE', { room: roomDto });
       }
     });
 
@@ -120,5 +131,11 @@ function setupListeners(ioServer: Server, rooms: GameRoom[]) {
 function findPlayerBySocket(rooms: GameRoom[], socketId: string): [Player | undefined, GameRoom | undefined] {
   const room = rooms.find((room) => room.players.some((player) => player.socket.id === socketId));
   const player = room?.players.find((player) => player.socket.id === socketId);
+  return [player, room];
+}
+
+function findPlayerByToken(rooms: GameRoom[], token: string): [Player | undefined, GameRoom | undefined] {
+  const room = rooms.find((room) => room.players.some((player) => player.token === token));
+  const player = room?.players.find((player) => player.token === token);
   return [player, room];
 }
