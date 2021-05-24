@@ -7,6 +7,7 @@ interface PointDto {
 
 interface ShapeDto {
   type: ShapeType;
+  color: string;
 }
 
 export interface DotDto extends ShapeDto {
@@ -18,7 +19,7 @@ export function isDotDto(shape: ShapeDto): shape is DotDto {
   return shape.type === 'Dot';
 }
 
-export interface LineDto {
+export interface LineDto extends ShapeDto {
   type: 'Line';
   start: PointDto;
   end: PointDto;
@@ -41,19 +42,24 @@ function pointFromDto(pointDto: PointDto): Point {
 }
 
 function dotToDto(dot: Dot): DotDto {
-  return { type: dot.type, point: pointToDto(dot.point) };
+  return { type: dot.type, color: dot.color, point: pointToDto(dot.point) };
 }
 
 function dotFromDto(dotDto: DotDto): Dot {
-  return { type: dotDto.type, point: pointFromDto(dotDto.point) };
+  return { type: dotDto.type, color: dotDto.color, point: pointFromDto(dotDto.point) };
 }
 
 function lineToDto(line: Line): LineDto {
-  return { type: line.type, start: pointToDto(line.start), end: pointToDto(line.end) };
+  return { type: line.type, color: line.color, start: pointToDto(line.start), end: pointToDto(line.end) };
 }
 
 function lineFromDto(lineDto: LineDto): Line {
-  return { type: lineDto.type, start: pointFromDto(lineDto.start), end: pointFromDto(lineDto.end) };
+  return {
+    type: lineDto.type,
+    color: lineDto.color,
+    start: pointFromDto(lineDto.start),
+    end: pointFromDto(lineDto.end),
+  };
 }
 
 function shapeToDto(shape: Shape): ShapeDto {

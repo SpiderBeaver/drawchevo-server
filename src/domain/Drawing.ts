@@ -7,6 +7,7 @@ export interface Point {
 
 export interface Shape {
   type: ShapeType;
+  color: string;
 }
 
 export interface Dot extends Shape {
@@ -18,7 +19,7 @@ export function isDot(shape: Shape): shape is Dot {
   return shape.type === 'Dot';
 }
 
-export interface Line {
+export interface Line extends Shape {
   type: 'Line';
   start: Point;
   end: Point;
