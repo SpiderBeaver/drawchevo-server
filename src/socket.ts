@@ -12,10 +12,11 @@ import {
   startNextRound,
   GameRoom,
   gameRoomToDto,
+  startMakingPhrases,
+  playerFinishedPhrase,
 } from './domain/GameRoom';
 import { createPlayer, Player } from './domain/Player';
 import DrawingDto, { drawingFromDto } from './dto/DrawingDto';
-import { usePhrasesCollection } from './phrasesCollection';
 
 export function initializeSocket(httpServer: http.Server, rooms: GameRoom[]) {
   const ioServer = new Server(httpServer, {
@@ -28,8 +29,6 @@ export function initializeSocket(httpServer: http.Server, rooms: GameRoom[]) {
 }
 
 function setupListeners(ioServer: Server, rooms: GameRoom[]) {
-  const phrases = usePhrasesCollection();
-
   ioServer.on('connection', (socket) => {
     console.log(`New connection ${socket.id}`);
 
@@ -46,7 +45,7 @@ function setupListeners(ioServer: Server, rooms: GameRoom[]) {
       socket.join(`gameroom:${roomId}`);
 
       const player = createPlayer(DEFAULT_HOST_ID, username, socket);
-      const room = createRoom(player, phrases);
+      const room = createRoom(player);
       rooms.push(room);
     });
 
@@ -82,7 +81,16 @@ function setupListeners(ioServer: Server, rooms: GameRoom[]) {
         return;
       }
 
-      startDrawing(room);
+      startMakingPhrases(room);
+    });
+
+    socket.on('PHRASE_DONE', ({ phrase }: { phrase: string }) => {
+      const [socketPlayer, room] = findPlayerBySocket(rooms, socket.id);
+      if (!socketPlayer || !room) {
+        return;
+      }
+
+      playerFinishedPhrase(room, socketPlayer, phrase);
     });
 
     socket.on('DRAWING_DONE', ({ drawing: drawingDto }: { drawing: DrawingDto }) => {

@@ -1,5 +1,6 @@
+// TODO: Fugure out the correct way to store data for original and fake phrases.
 export interface Phrase {
-  // TODO: Maybe don't store playerId here.
-  playerId: number;
+  authorId: number;
+  drawingPlayerId: number | null;
   text: string;
 }

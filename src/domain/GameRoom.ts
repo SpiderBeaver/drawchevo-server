@@ -3,38 +3,42 @@ import { GameRoomDto } from '../dto/GameRoomDto';
 import { phraseToDto } from '../dto/PhraseDto';
 import { playerToDto } from '../dto/PlayerDto';
 import { voteToDto } from '../dto/VoteDto';
-import { selectRandomElement } from '../utils/utils';
+import { selectRandomElement, shuffle } from '../utils/utils';
 import Drawing from './Drawing';
 import { Phrase } from './Phrase';
 import { Player } from './Player';
-import { getPhraseByPlayerId, getPhraseByText, newRound, Round } from './Round';
+import { getPhraseByAuthorId, getPhraseByText, newRound, Round } from './Round';
 
 // TODO: Think about extracting socket interactions from this module.
 
 export const DEFAULT_HOST_ID = 0;
 
-export type GameState = 'NOT_STARTED' | 'DRAWING' | 'MAKING_FAKE_PHRASES' | 'VOTING' | 'SHOWING_VOTING_RESULTS';
+export type GameState =
+  | 'NOT_STARTED'
+  | 'MAKING_PHRASES'
+  | 'DRAWING'
+  | 'MAKING_FAKE_PHRASES'
+  | 'VOTING'
+  | 'SHOWING_VOTING_RESULTS';
 
 export interface GameRoom {
   id: string;
   hostId: number;
   state: GameState;
   players: Player[];
-  phrasesPool: string[];
   originalPhrases: Phrase[];
   drawings: { playerId: number; drawing: Drawing }[];
   finishedRoundsPlayersIds: number[];
   currentRound: Round | null;
 }
 
-export function createRoom(host: Player, phrasesPool: string[]): GameRoom {
+export function createRoom(host: Player): GameRoom {
   const roomId = generateRoomId();
   const room: GameRoom = {
     id: roomId,
     hostId: host.id,
     state: 'NOT_STARTED',
     players: [host],
-    phrasesPool: phrasesPool,
     originalPhrases: [],
     drawings: [],
     finishedRoundsPlayersIds: [],
@@ -51,6 +55,8 @@ function generateRoomId(): string {
 }
 
 export function gameRoomToDto(room: GameRoom, currentPlayerId: number): GameRoomDto {
+  const originalPhrase = room.originalPhrases.find((p) => p.drawingPlayerId === currentPlayerId) ?? null;
+  const originalPhraseDto = originalPhrase ? phraseToDto(originalPhrase) : null;
   const dto: GameRoomDto = {
     id: room.id,
     hostId: room.hostId,
@@ -60,7 +66,7 @@ export function gameRoomToDto(room: GameRoom, currentPlayerId: number): GameRoom
       username: player.username,
       status: player.status,
     })),
-    originalPhrase: room.originalPhrases.find((p) => p.playerId === currentPlayerId) ?? null,
+    originalPhrase: originalPhraseDto,
   };
   return dto;
 }
@@ -84,13 +90,36 @@ export function addPlayer(room: GameRoom, newPlayer: Player) {
     });
 }
 
+export function startMakingPhrases(room: GameRoom) {
+  room.state = 'MAKING_PHRASES';
+  room.players.forEach((player) => (player.status = 'making_phrase'));
+
+  room.players.forEach((player) => {
+    player.socket.emit('START_MAKING_PHRASE');
+  });
+}
+
+export function playerFinishedPhrase(room: GameRoom, playerWithPhrase: Player, phraseText: string) {
+  const phrase: Phrase = { authorId: playerWithPhrase.id, drawingPlayerId: null, text: phraseText };
+  room.originalPhrases.push(phrase);
+
+  playerWithPhrase.status = 'finished_phrase';
+
+  room.players.forEach((player) => {
+    player.socket.emit('PLAYER_FINISHED_PHRASE', { playerId: playerWithPhrase.id });
+  });
+
+  const everyoneFinishedPhrases = room.players.every((player) => player.status === 'finished_phrase');
+  if (everyoneFinishedPhrases) {
+    startDrawing(room);
+  }
+}
+
 export function startDrawing(room: GameRoom) {
   room.state = 'DRAWING';
-  room.originalPhrases = selectPhrases(
-    room.players.map((p) => p.id),
-    room.phrasesPool
-  );
   room.players.forEach((player) => (player.status = 'drawing'));
+
+  assignPhrasesToPlayersForDrawing(room);
 
   // NOTE: It's probably better to send just the phrases. But we can simply refresh the fame state as well.
   // NOTE: We don't want to send all the phrases to all the players. Just send the ones they need to draw.
@@ -98,6 +127,16 @@ export function startDrawing(room: GameRoom) {
     const roomDto = gameRoomToDto(room, player.id);
     player.socket.emit('UPDATE_ROOM_STATE', { room: roomDto });
   });
+}
+
+function assignPhrasesToPlayersForDrawing(room: GameRoom) {
+  const playersIds = shuffle(room.players.map((player) => player.id));
+  for (let i = 0; i < playersIds.length; i++) {
+    const authorId = playersIds[i];
+    const drawingPlayerId = i + 1 < playersIds.length ? playersIds[i + 1] : playersIds[0];
+    const phrase = room.originalPhrases.find((phrase) => phrase.authorId === authorId)!;
+    phrase.drawingPlayerId = drawingPlayerId;
+  }
 }
 
 export function playerFinishedDrawing(room: GameRoom, drawingPlayer: Player, drawing: Drawing) {
@@ -120,7 +159,7 @@ export function startNextRound(room: GameRoom) {
 
   const nextRoundPlayer = selectNextRoundPlayer(room);
   if (nextRoundPlayer !== null) {
-    const newRoundOriginalPhrase = room.originalPhrases.find((p) => p.playerId === nextRoundPlayer.id)!;
+    const newRoundOriginalPhrase = room.originalPhrases.find((p) => p.drawingPlayerId === nextRoundPlayer.id)!;
     const newRoundDrawing = room.drawings.find((d) => d.playerId === nextRoundPlayer.id)?.drawing!;
     room.currentRound = newRound(nextRoundPlayer, newRoundOriginalPhrase, newRoundDrawing);
     startMakingFakePhrases(room);
@@ -131,30 +170,25 @@ function startMakingFakePhrases(room: GameRoom) {
   const currentRound = room.currentRound!;
   room.state = 'MAKING_FAKE_PHRASES';
   const currentRoundDrawingDto = drawingToDto(currentRound.drawing);
+  const currentRoundOriginalPhraseDro = phraseToDto(currentRound.originalPhrase);
   room.players.forEach((player) => {
     player.status = 'making_fake_phrase';
     player.socket.emit('START_MAKING_FAKE_PHRASES', {
       currentPlayerId: currentRound.roundPlayer.id,
+      originalPhrase: currentRoundOriginalPhraseDro,
       drawing: currentRoundDrawingDto,
     });
   });
 }
 
-function selectPhrases(playerIds: number[], allPhrases: string[]): Phrase[] {
-  const phrases = playerIds.map(
-    (playerId) =>
-      ({
-        playerId: playerId,
-        text: selectRandomElement(allPhrases),
-      } as Phrase)
-  );
-  return phrases;
-}
-
 export function playerFinishedFakePhrase(room: GameRoom, playerWithPhrase: Player, phraseText: string) {
   const currentRound = room.currentRound!;
 
-  currentRound.fakePhrases.push({ playerId: playerWithPhrase.id, text: phraseText });
+  currentRound.fakePhrases.push({
+    authorId: playerWithPhrase.id,
+    drawingPlayerId: currentRound.roundPlayer.id,
+    text: phraseText,
+  });
   playerWithPhrase.status = 'finished_making_fake_phrase';
   room.players.forEach((player) => {
     player.socket.emit('PLAYER_FINISHED_MAKING_FAKE_PHRASE', { playerId: playerWithPhrase.id });
@@ -162,6 +196,7 @@ export function playerFinishedFakePhrase(room: GameRoom, playerWithPhrase: Playe
 
   const everyoneDone = room.players
     .filter((player) => player.id !== currentRound.roundPlayer.id)
+    .filter((player) => player.id !== currentRound.originalPhrase.authorId)
     .every((player) => player.status == 'finished_making_fake_phrase');
   if (everyoneDone) {
     startVoting(room);
@@ -183,7 +218,7 @@ function startVoting(room: GameRoom) {
 export function playerVotedForPhrase(room: GameRoom, votedPlayer: Player, phrasePlayerId: number) {
   const currentRound = room.currentRound!;
   votedPlayer.status = 'finished_voting';
-  const votedPhrase = getPhraseByPlayerId(currentRound, phrasePlayerId)!;
+  const votedPhrase = getPhraseByAuthorId(currentRound, phrasePlayerId)!;
   currentRound.votes.push({ playerId: votedPlayer.id, phrase: votedPhrase });
   room.players.forEach((player) => {
     player.socket.emit('PLAYER_FINISHED_VOTING', { playerId: votedPlayer.id });

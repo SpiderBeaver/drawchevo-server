@@ -28,8 +28,8 @@ export function getPhraseByText(round: Round, phraseText: string) {
   return phrase;
 }
 
-export function getPhraseByPlayerId(round: Round, playerId: number) {
+export function getPhraseByAuthorId(round: Round, playerId: number) {
   const allPhrases = [round.originalPhrase, ...round.fakePhrases];
-  const phrase = allPhrases.find((p) => p.playerId === playerId);
+  const phrase = allPhrases.find((p) => p.authorId === playerId);
   return phrase;
 }

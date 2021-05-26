@@ -3,6 +3,8 @@ import crypto from 'crypto';
 
 export type PlayerStatus =
   | 'idle'
+  | 'making_phrase'
+  | 'finished_phrase'
   | 'drawing'
   | 'finished_drawing'
   | 'making_fake_phrase'
