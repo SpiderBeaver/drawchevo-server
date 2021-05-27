@@ -71,6 +71,18 @@ function setupListeners(ioServer: Server, rooms: GameRoom[]) {
       }
     });
 
+    socket.on('QUIT_GAME', () => {
+      const [socketPlayer, room] = findPlayerBySocket(rooms, socket.id);
+      if (!socketPlayer || !room) {
+        return;
+      }
+
+      // For now just end the game if someone leaves.
+      // TODO: Think about allowing players to continue.
+      room.players.forEach((player) => player.socket.emit('GAME_ENDED'));
+      rooms = rooms.filter((r) => r !== room);
+    });
+
     socket.on('START_GAME', () => {
       const [socketPlayer, room] = findPlayerBySocket(rooms, socket.id);
       if (!socketPlayer || !room) {
