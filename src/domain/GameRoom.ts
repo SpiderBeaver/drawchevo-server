@@ -224,7 +224,12 @@ export function playerVotedForPhrase(room: GameRoom, votedPlayer: Player, phrase
     player.socket.emit('PLAYER_FINISHED_VOTING', { playerId: votedPlayer.id });
   });
 
-  if (room.players.every((player) => player.status === 'finished_voting')) {
+  // If a player is an author of the original phrase or a drawing author they don't vote.
+  const playersToVote = room.players.filter(
+    (player) => player.id !== currentRound.originalPhrase.authorId && player.id !== currentRound.roundPlayer.id
+  );
+  const everyoneVoted = playersToVote.every((player) => player.status === 'finished_voting');
+  if (everyoneVoted) {
     showVotingResults(room);
   }
 }
