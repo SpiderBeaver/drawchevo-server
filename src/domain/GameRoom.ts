@@ -61,11 +61,7 @@ export function gameRoomToDto(room: GameRoom, currentPlayerId: number): GameRoom
     id: room.id,
     hostId: room.hostId,
     state: room.state,
-    players: room.players.map((player) => ({
-      id: player.id,
-      username: player.username,
-      status: player.status,
-    })),
+    players: room.players.map((player) => playerToDto(player)),
     originalPhrase: originalPhraseDto,
   };
   return dto;
@@ -230,8 +226,31 @@ export function playerVotedForPhrase(room: GameRoom, votedPlayer: Player, phrase
   );
   const everyoneVoted = playersToVote.every((player) => player.status === 'finished_voting');
   if (everyoneVoted) {
+    updatePointsOnRoundEnd(room);
     showVotingResults(room);
   }
+}
+
+function updatePointsOnRoundEnd(room: GameRoom) {
+  const currentRound = room.currentRound!;
+  currentRound.votes.forEach((vote) => {
+    if (vote.phrase.authorId == currentRound.originalPhrase.authorId) {
+      // If a vote is for the original phase, award a point to the drawing author rather than the phrase author.
+      currentRound.roundPlayer.points += 1;
+    } else {
+      const votedPhraseAuthor = room.players.find((player) => player.id === vote.phrase.authorId)!;
+      votedPhraseAuthor.points += 1;
+    }
+  });
+
+  room.players.forEach((player) => {
+    player.socket.emit('UPDATE_POINTS', {
+      points: room.players.map((player) => ({
+        playerId: player.id,
+        points: player.points,
+      })),
+    });
+  });
 }
 
 function showVotingResults(room: GameRoom) {
