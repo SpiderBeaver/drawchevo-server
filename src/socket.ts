@@ -18,6 +18,8 @@ import {
 import { createPlayer, Player } from './domain/Player';
 import DrawingDto, { drawingFromDto } from './dto/DrawingDto';
 
+const MINIMUM_PLAYERS_COUNT = 4;
+
 export function initializeSocket(httpServer: http.Server, rooms: GameRoom[]) {
   const ioServer = new Server(httpServer, {
     cors: {
@@ -90,6 +92,9 @@ function setupListeners(ioServer: Server, rooms: GameRoom[]) {
       }
 
       if (room.hostId !== socketPlayer.id) {
+        return;
+      }
+      if (room.players.length < MINIMUM_PLAYERS_COUNT) {
         return;
       }
 
