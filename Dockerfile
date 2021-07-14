@@ -1,10 +1,16 @@
-FROM node:15
-
+FROM node as deps
 WORKDIR /app
-COPY ./dist ./dist
-COPY ./static ./static
-COPY ./package.json ./package.json
+COPY package.json package-lock.json ./
+RUN npm install
 
-RUN npm install --production
+FROM node as builder
+WORKDIR /app
+COPY . .
+COPY --from=deps /app/node_modules ./node_modules
+RUN npm run build
 
-CMD node ./dist/index.js
+FROM node as runner
+WORKDIR /app
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+CMD ["node", "./dist/index.js"]

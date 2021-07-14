@@ -7,7 +7,7 @@ const rooms: GameRoom[] = [];
 const httpServer = createServer();
 initializeSocket(httpServer, rooms);
 
-const port = 3001;
+const port = 3000;
 httpServer.listen(port, () => {
   console.log(`Server started on port ${port}`);
 });
