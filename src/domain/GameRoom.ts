@@ -214,20 +214,18 @@ function startVoting(room: GameRoom) {
   });
 }
 
-// TODO: Now that phrases have ids, we can pass it instead of phrasePlayerId.
-export function playerVotedForPhrase(room: GameRoom, votedPlayer: Player, phrasePlayerId: number) {
+export function playerVotedForPhrase(room: GameRoom, votedPlayer: Player, phraseId: number) {
   const currentRound = room.currentRound!;
-  const currentOriginalPhrase = room.originalPhrases.find((p) => p.id === currentRound.originalPhraseId)!;
-  const currentAllPhrases = [currentOriginalPhrase, ...currentRound.fakePhrases];
 
   votedPlayer.status = 'finished_voting';
-  const votedPhrase = currentAllPhrases.find((p) => p.authorId === phrasePlayerId)!;
-  currentRound.votes.push({ playerId: votedPlayer.id, phrase: votedPhrase });
+  currentRound.votes.push({ playerId: votedPlayer.id, phraseId: phraseId });
   room.players.forEach((player) => {
     player.socket.emit('PLAYER_FINISHED_VOTING', { playerId: votedPlayer.id });
   });
 
+  // Check if everyone voted.
   // If a player is an author of the original phrase or a drawing author they don't vote.
+  const currentOriginalPhrase = room.originalPhrases.find((p) => p.id === currentRound.originalPhraseId)!;
   const playersToVote = room.players.filter(
     (player) => player.id !== currentOriginalPhrase.authorId && player.id !== currentRound.roundPlayerId
   );
@@ -241,13 +239,15 @@ export function playerVotedForPhrase(room: GameRoom, votedPlayer: Player, phrase
 function updatePointsOnRoundEnd(room: GameRoom) {
   const currentRound = room.currentRound!;
   const currentOriginalPhrase = room.originalPhrases.find((p) => p.id === currentRound.originalPhraseId)!;
+  const currentAllPhrases = [currentOriginalPhrase, ...currentRound.fakePhrases];
   const currentRoundPlayer = room.players.find((p) => p.id === currentRound.roundPlayerId)!;
   currentRound.votes.forEach((vote) => {
-    if (vote.phrase.authorId == currentOriginalPhrase.authorId) {
+    if (vote.phraseId === currentRound.originalPhraseId) {
       // If a vote is for the original phase, award a point to the drawing author rather than the phrase author.
       currentRoundPlayer.points += 1;
     } else {
-      const votedPhraseAuthor = room.players.find((player) => player.id === vote.phrase.authorId)!;
+      const votedPhrase = currentAllPhrases.find((p) => p.id === vote.phraseId)!;
+      const votedPhraseAuthor = room.players.find((player) => player.id === votedPhrase.authorId)!;
       votedPhraseAuthor.points += 1;
     }
   });

@@ -1,15 +1,14 @@
 import { Vote } from '../domain/Vote';
-import { PhraseDto, phraseToDto } from './PhraseDto';
 
 export interface VoteDto {
   playerId: number;
-  phrase: PhraseDto;
+  phraseId: number;
 }
 
 export function voteToDto(vote: Vote): VoteDto {
   const dto: VoteDto = {
     playerId: vote.playerId,
-    phrase: phraseToDto(vote.phrase),
+    phraseId: vote.phraseId,
   };
   return dto;
 }
