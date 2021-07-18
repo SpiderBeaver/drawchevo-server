@@ -5,9 +5,9 @@ import { playerToDto } from '../dto/PlayerDto';
 import { voteToDto } from '../dto/VoteDto';
 import { selectRandomElement, shuffle } from '../utils/utils';
 import Drawing from './Drawing';
-import { Phrase } from './Phrase';
+import { createPhrase, Phrase } from './Phrase';
 import { Player } from './Player';
-import { getPhraseByAuthorId, getPhraseByText, newRound, Round } from './Round';
+import { newRound, Round } from './Round';
 
 // TODO: Think about extracting socket interactions from this module.
 
@@ -27,6 +27,7 @@ export interface GameRoom {
   state: GameState;
   players: Player[];
   originalPhrases: Phrase[];
+  drawingAssignments: { playerId: number; phraseId: number }[];
   drawings: { playerId: number; drawing: Drawing }[];
   finishedRoundsPlayersIds: number[];
   currentRound: Round | null;
@@ -40,6 +41,7 @@ export function createRoom(host: Player): GameRoom {
     state: 'NOT_STARTED',
     players: [host],
     originalPhrases: [],
+    drawingAssignments: [],
     drawings: [],
     finishedRoundsPlayersIds: [],
     currentRound: null,
@@ -55,7 +57,8 @@ function generateRoomId(): string {
 }
 
 export function gameRoomToDto(room: GameRoom, currentPlayerId: number): GameRoomDto {
-  const originalPhrase = room.originalPhrases.find((p) => p.drawingPlayerId === currentPlayerId) ?? null;
+  const originalPhraseId = room.drawingAssignments.find((a) => a.playerId === currentPlayerId)?.phraseId;
+  const originalPhrase = room.originalPhrases.find((p) => p.id === originalPhraseId);
   const originalPhraseDto = originalPhrase ? phraseToDto(originalPhrase) : null;
   const dto: GameRoomDto = {
     id: room.id,
@@ -96,7 +99,7 @@ export function startMakingPhrases(room: GameRoom) {
 }
 
 export function playerFinishedPhrase(room: GameRoom, playerWithPhrase: Player, phraseText: string) {
-  const phrase: Phrase = { authorId: playerWithPhrase.id, drawingPlayerId: null, text: phraseText };
+  const phrase = createPhrase(playerWithPhrase.id, phraseText);
   room.originalPhrases.push(phrase);
 
   playerWithPhrase.status = 'finished_phrase';
@@ -131,7 +134,7 @@ function assignPhrasesToPlayersForDrawing(room: GameRoom) {
     const authorId = playersIds[i];
     const drawingPlayerId = i + 1 < playersIds.length ? playersIds[i + 1] : playersIds[0];
     const phrase = room.originalPhrases.find((phrase) => phrase.authorId === authorId)!;
-    phrase.drawingPlayerId = drawingPlayerId;
+    room.drawingAssignments.push({ playerId: drawingPlayerId, phraseId: phrase.id });
   }
 }
 
@@ -150,14 +153,14 @@ export function playerFinishedDrawing(room: GameRoom, drawingPlayer: Player, dra
 
 export function startNextRound(room: GameRoom) {
   if (room.currentRound != null) {
-    room.finishedRoundsPlayersIds.push(room.currentRound.roundPlayer.id);
+    room.finishedRoundsPlayersIds.push(room.currentRound.roundPlayerId);
   }
 
   const nextRoundPlayer = selectNextRoundPlayer(room);
   if (nextRoundPlayer !== null) {
-    const newRoundOriginalPhrase = room.originalPhrases.find((p) => p.drawingPlayerId === nextRoundPlayer.id)!;
-    const newRoundDrawing = room.drawings.find((d) => d.playerId === nextRoundPlayer.id)?.drawing!;
-    room.currentRound = newRound(nextRoundPlayer, newRoundOriginalPhrase, newRoundDrawing);
+    const nextRoundOriginalPhraseId = room.drawingAssignments.find((a) => a.playerId === nextRoundPlayer.id)!.phraseId;
+    const newRoundDrawing = room.drawings.find((d) => d.playerId === nextRoundPlayer.id)!.drawing;
+    room.currentRound = newRound(nextRoundPlayer.id, nextRoundOriginalPhraseId, newRoundDrawing);
     startMakingFakePhrases(room);
   }
 }
@@ -166,11 +169,12 @@ function startMakingFakePhrases(room: GameRoom) {
   const currentRound = room.currentRound!;
   room.state = 'MAKING_FAKE_PHRASES';
   const currentRoundDrawingDto = drawingToDto(currentRound.drawing);
-  const currentRoundOriginalPhraseDro = phraseToDto(currentRound.originalPhrase);
+  const currentRoundOriginalPhrase = room.originalPhrases.find((p) => p.id === currentRound.originalPhraseId)!;
+  const currentRoundOriginalPhraseDro = phraseToDto(currentRoundOriginalPhrase);
   room.players.forEach((player) => {
     player.status = 'making_fake_phrase';
     player.socket.emit('START_MAKING_FAKE_PHRASES', {
-      currentPlayerId: currentRound.roundPlayer.id,
+      currentPlayerId: currentRound.roundPlayerId,
       originalPhrase: currentRoundOriginalPhraseDro,
       drawing: currentRoundDrawingDto,
     });
@@ -180,19 +184,17 @@ function startMakingFakePhrases(room: GameRoom) {
 export function playerFinishedFakePhrase(room: GameRoom, playerWithPhrase: Player, phraseText: string) {
   const currentRound = room.currentRound!;
 
-  currentRound.fakePhrases.push({
-    authorId: playerWithPhrase.id,
-    drawingPlayerId: currentRound.roundPlayer.id,
-    text: phraseText,
-  });
+  const fakePhrase = createPhrase(playerWithPhrase.id, phraseText);
+  currentRound.fakePhrases.push(fakePhrase);
   playerWithPhrase.status = 'finished_making_fake_phrase';
   room.players.forEach((player) => {
     player.socket.emit('PLAYER_FINISHED_MAKING_FAKE_PHRASE', { playerId: playerWithPhrase.id });
   });
 
+  const roundOriginalPhrase = room.originalPhrases.find((p) => p.id === currentRound.originalPhraseId)!;
   const everyoneDone = room.players
-    .filter((player) => player.id !== currentRound.roundPlayer.id)
-    .filter((player) => player.id !== currentRound.originalPhrase.authorId)
+    .filter((player) => player.id !== currentRound.roundPlayerId)
+    .filter((player) => player.id !== roundOriginalPhrase.authorId)
     .every((player) => player.status == 'finished_making_fake_phrase');
   if (everyoneDone) {
     startVoting(room);
@@ -201,20 +203,25 @@ export function playerFinishedFakePhrase(room: GameRoom, playerWithPhrase: Playe
 
 function startVoting(room: GameRoom) {
   const currentRound = room.currentRound!;
+  const currentOriginalPhrase = room.originalPhrases.find((p) => p.id === currentRound.originalPhraseId)!;
   room.state = 'VOTING';
   room.players.forEach((player) => {
     player.status = 'voting';
     // TODO: Maybe a better way is to send phrases with some kind of IDs.
-    const phrases = [...currentRound.fakePhrases, currentRound.originalPhrase];
+    const phrases = [...currentRound.fakePhrases, currentOriginalPhrase];
     const phrasesDto = phrases.map((phrase) => phraseToDto(phrase));
     player.socket.emit('START_VOTING', { phrases: phrasesDto });
   });
 }
 
+// TODO: Now that phrases have ids, we can pass it instead of phrasePlayerId.
 export function playerVotedForPhrase(room: GameRoom, votedPlayer: Player, phrasePlayerId: number) {
   const currentRound = room.currentRound!;
+  const currentOriginalPhrase = room.originalPhrases.find((p) => p.id === currentRound.originalPhraseId)!;
+  const currentAllPhrases = [currentOriginalPhrase, ...currentRound.fakePhrases];
+
   votedPlayer.status = 'finished_voting';
-  const votedPhrase = getPhraseByAuthorId(currentRound, phrasePlayerId)!;
+  const votedPhrase = currentAllPhrases.find((p) => p.authorId === phrasePlayerId)!;
   currentRound.votes.push({ playerId: votedPlayer.id, phrase: votedPhrase });
   room.players.forEach((player) => {
     player.socket.emit('PLAYER_FINISHED_VOTING', { playerId: votedPlayer.id });
@@ -222,7 +229,7 @@ export function playerVotedForPhrase(room: GameRoom, votedPlayer: Player, phrase
 
   // If a player is an author of the original phrase or a drawing author they don't vote.
   const playersToVote = room.players.filter(
-    (player) => player.id !== currentRound.originalPhrase.authorId && player.id !== currentRound.roundPlayer.id
+    (player) => player.id !== currentOriginalPhrase.authorId && player.id !== currentRound.roundPlayerId
   );
   const everyoneVoted = playersToVote.every((player) => player.status === 'finished_voting');
   if (everyoneVoted) {
@@ -233,10 +240,12 @@ export function playerVotedForPhrase(room: GameRoom, votedPlayer: Player, phrase
 
 function updatePointsOnRoundEnd(room: GameRoom) {
   const currentRound = room.currentRound!;
+  const currentOriginalPhrase = room.originalPhrases.find((p) => p.id === currentRound.originalPhraseId)!;
+  const currentRoundPlayer = room.players.find((p) => p.id === currentRound.roundPlayerId)!;
   currentRound.votes.forEach((vote) => {
-    if (vote.phrase.authorId == currentRound.originalPhrase.authorId) {
+    if (vote.phrase.authorId == currentOriginalPhrase.authorId) {
       // If a vote is for the original phase, award a point to the drawing author rather than the phrase author.
-      currentRound.roundPlayer.points += 1;
+      currentRoundPlayer.points += 1;
     } else {
       const votedPhraseAuthor = room.players.find((player) => player.id === vote.phrase.authorId)!;
       votedPhraseAuthor.points += 1;
@@ -255,11 +264,12 @@ function updatePointsOnRoundEnd(room: GameRoom) {
 
 function showVotingResults(room: GameRoom) {
   const currentRound = room.currentRound!;
+  const currentOriginalPhrase = room.originalPhrases.find((p) => p.id === currentRound.originalPhraseId)!;
   room.state = 'SHOWING_VOTING_RESULTS';
   room.players.forEach((player) => {
     player.socket.emit('SHOW_VOTING_RESULTS', {
       votes: currentRound.votes.map((vote) => voteToDto(vote)),
-      originalPhrase: phraseToDto(currentRound.originalPhrase),
+      originalPhrase: phraseToDto(currentOriginalPhrase),
     });
   });
 }

@@ -1,6 +1,13 @@
-// TODO: Fugure out the correct way to store data for original and fake phrases.
+let idCounter = -1;
+
 export interface Phrase {
+  id: number;
   authorId: number;
-  drawingPlayerId: number | null;
   text: string;
+}
+
+export function createPhrase(authorId: number, text: string) {
+  idCounter += 1;
+  const phrase: Phrase = { id: idCounter, authorId: authorId, text: text };
+  return phrase;
 }
