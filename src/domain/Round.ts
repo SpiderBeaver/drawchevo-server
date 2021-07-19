@@ -10,7 +10,7 @@ export interface Round {
   votes: Vote[];
 }
 
-export function newRound(roundPlayerId: number, originalPhraseId: number, drawing: Drawing): Round {
+export function createRound(roundPlayerId: number, originalPhraseId: number, drawing: Drawing): Round {
   const round: Round = {
     roundPlayerId: roundPlayerId,
     originalPhraseId: originalPhraseId,

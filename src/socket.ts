@@ -52,14 +52,16 @@ function setupListeners(ioServer: Server, rooms: GameRoom[]) {
     });
 
     socket.on('JOIN_ROOM', ({ roomId, username }: { roomId: string; username: string }) => {
-      const room = rooms.find((r) => r.id === roomId);
-      if (room) {
+      const roomIndex = rooms.findIndex((r) => r.id === roomId);
+      if (roomIndex !== -1) {
+        const room = rooms[roomIndex];
         socket.join(`gameroom:${roomId}`);
 
         // Maybe should incapsulate this logic. But it works for now.
         const newPlayerId = nextPlayerId(room);
         const newPlayer = createPlayer(newPlayerId, username, socket);
-        addPlayer(room, newPlayer);
+        const roomUpdated = addPlayer(room, newPlayer);
+        rooms[rooms.indexOf(room)] = roomUpdated;
       }
     });
 
@@ -98,7 +100,12 @@ function setupListeners(ioServer: Server, rooms: GameRoom[]) {
         return;
       }
 
-      startMakingPhrases(room);
+      if (room.state !== 'NOT_STARTED') {
+        return;
+      }
+
+      const roomUpdated = startMakingPhrases(room);
+      rooms[rooms.indexOf(room)] = roomUpdated;
     });
 
     socket.on('PHRASE_DONE', ({ phrase }: { phrase: string }) => {
@@ -106,8 +113,12 @@ function setupListeners(ioServer: Server, rooms: GameRoom[]) {
       if (!socketPlayer || !room) {
         return;
       }
+      if (room.state !== 'MAKING_PHRASES') {
+        return;
+      }
 
-      playerFinishedPhrase(room, socketPlayer, phrase);
+      const roomUpdated = playerFinishedPhrase(room, socketPlayer.id, phrase);
+      rooms[rooms.indexOf(room)] = roomUpdated;
     });
 
     socket.on('DRAWING_DONE', ({ drawing: drawingDto }: { drawing: DrawingDto }) => {
@@ -115,9 +126,13 @@ function setupListeners(ioServer: Server, rooms: GameRoom[]) {
       if (!socketPlayer || !room) {
         return;
       }
+      if (room.state !== 'DRAWING') {
+        return;
+      }
 
       const drawing = drawingFromDto(drawingDto);
-      playerFinishedDrawing(room, socketPlayer, drawing);
+      const roomUpdated = playerFinishedDrawing(room, socketPlayer.id, drawing);
+      rooms[rooms.indexOf(room)] = roomUpdated;
     });
 
     socket.on('FAKE_PHRASE_DONE', ({ text }: { text: string }) => {
@@ -125,8 +140,12 @@ function setupListeners(ioServer: Server, rooms: GameRoom[]) {
       if (!socketPlayer || !room) {
         return;
       }
+      if (room.state !== 'MAKING_FAKE_PHRASES') {
+        return;
+      }
 
-      playerFinishedFakePhrase(room, socketPlayer, text);
+      const roomUpdated = playerFinishedFakePhrase(room, socketPlayer.id, text);
+      rooms[rooms.indexOf(room)] = roomUpdated;
     });
 
     socket.on('VOTE_FOR_PHRASE', ({ phrasePlayerId }: { phrasePlayerId: number }) => {
@@ -134,8 +153,12 @@ function setupListeners(ioServer: Server, rooms: GameRoom[]) {
       if (!socketPlayer || !room) {
         return;
       }
+      if (room.state !== 'VOTING') {
+        return;
+      }
 
-      playerVotedForPhrase(room, socketPlayer, phrasePlayerId);
+      const roomUpdated = playerVotedForPhrase(room, socketPlayer.id, phrasePlayerId);
+      rooms[rooms.indexOf(room)] = roomUpdated;
     });
 
     socket.on('START_NEXT_ROUND', () => {
@@ -147,8 +170,12 @@ function setupListeners(ioServer: Server, rooms: GameRoom[]) {
       if (room.hostId !== socketPlayer.id) {
         return;
       }
+      if (room.state !== 'SHOWING_VOTING_RESULTS') {
+        return;
+      }
 
-      startNextRound(room);
+      const roomUpdated = startNextRound(room);
+      rooms[rooms.indexOf(room)] = roomUpdated;
     });
   });
 }
