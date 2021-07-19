@@ -243,6 +243,8 @@ function updatePointsOnRoundEnd(room: GameRoom) {
   const currentRoundPlayer = room.players.find((p) => p.id === currentRound.roundPlayerId)!;
   currentRound.votes.forEach((vote) => {
     if (vote.phraseId === currentRound.originalPhraseId) {
+      const voter = room.players.find((p) => p.id === vote.playerId)!;
+      voter.points += 1;
       // If a vote is for the original phase, award a point to the drawing author rather than the phrase author.
       currentRoundPlayer.points += 1;
     } else {

@@ -1,6 +1,5 @@
 import Drawing from './Drawing';
 import { Phrase } from './Phrase';
-import { Player } from './Player';
 import { Vote } from './Vote';
 
 export interface Round {
