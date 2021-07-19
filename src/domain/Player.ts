@@ -14,7 +14,6 @@ export type PlayerStatus =
 
 export interface Player {
   id: number;
-  socket: Socket;
   // TODO: Maybe combine token with ID.
   token: string;
   username: string;
@@ -22,10 +21,8 @@ export interface Player {
   points: number;
 }
 
-export function createPlayer(id: number, username: string, socket: Socket): Player {
+export function createPlayer(id: number, username: string): Player {
   const playerToken = crypto.randomBytes(24).toString('hex');
-  const player: Player = { id: id, socket: socket, token: playerToken, username: username, status: 'idle', points: 0 };
-  socket.emit('ASSING_PLAYER_ID', { playerId: id });
-  socket.emit('ASSIGN_PLAYER_TOKEN', { token: player.token });
+  const player: Player = { id: id, token: playerToken, username: username, status: 'idle', points: 0 };
   return player;
 }
